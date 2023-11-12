@@ -6,7 +6,6 @@ import pandas as pd
 
 
 
-
 def get_moving_average_volume(ticker, interval, count):
     df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
     if df is None:
@@ -61,6 +60,17 @@ def get_balance(ticker):
     return 0
 
 
+def update_invested_list():
+    global invested
+    current_holdings = upbit.get_balances()
+    holding_tickers = {
+        item["currency"] for item in current_holdings if item["currency"] != "KRW"
+    }
+    invested = {
+        ticker: info for ticker, info in invested.items() if ticker in holding_tickers
+    }
+
+
 # 로그인
 upbit = pyupbit.Upbit(access, secret)
 print("자동매매 시작")
@@ -80,6 +90,7 @@ invested = {}
 # 자동매매 시작
 while True:
     try:
+        update_invested_list()
         # 보유 중인 종목과 매도 목표 가격을 출력합니다.
         if invested:  # 보유 종목이 있을 경우에만 출력
             message = "보유 중인 종목과 매도 목표:\n"
