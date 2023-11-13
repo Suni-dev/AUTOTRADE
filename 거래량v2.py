@@ -5,8 +5,6 @@ import requests
 import pandas as pd
 import traceback
 
-access = "bRwAU1P0CIVkBQWWMxJ6TGLa56TVidXz6TvPWQji"
-secret = "fI1yNBxDSk6Onaa1bnE7LV7IQIx1PO3pJjSrhyvZ"
 
 
 def get_moving_average_volume(ticker, interval, count):
