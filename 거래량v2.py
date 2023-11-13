@@ -3,7 +3,10 @@ import pyupbit
 import datetime
 import requests
 import pandas as pd
+import traceback
 
+access = "bRwAU1P0CIVkBQWWMxJ6TGLa56TVidXz6TvPWQji"
+secret = "fI1yNBxDSk6Onaa1bnE7LV7IQIx1PO3pJjSrhyvZ"
 
 
 def get_moving_average_volume(ticker, interval, count):
@@ -102,9 +105,9 @@ while True:
                 )  # 평가손익 계산
                 message += (
                     f"*{ticker}*\n"
-                    f"매수 가격: `{info['price']:,}` KRW\n"  # 천 단위 구분자 추가
-                    f"현재 가격: `{current_price:,}` KRW\n"  # 천 단위 구분자 추가
-                    f"목표 매도가: `{sell_price:,}` KRW\n"  # 천 단위 구분자 추가
+                    f"매수 가격: `{info['price']:,}` KRW\n"
+                    f"현재 가격: `{current_price:,}` KRW\n"
+                    f"목표 매도가: `{sell_price:,}` KRW\n"
                     f"평가손익: `{profit_or_loss:.2f}%`\n\n"
                 )
             send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
@@ -140,39 +143,57 @@ while True:
                 and investment_limit > MINIMUM_KRW_ORDER
             ):
                 buy_result = upbit.buy_market_order(ticker, investment_limit)
-                invested[ticker] = {
-                    "price": current_price,
-                    "volume": investment_limit / current_price,
-                    "stop_loss": current_price * dynamic_stop_loss_ratio,
-                    "take_profit": current_price * dynamic_take_profit_ratio,
-                }
-                num_investments += 1
-                message = f"{ticker}에 투자했습니다: {buy_result}"
+                buy_result_message = f"매수 주문 결과 - {ticker}: {buy_result}"
+                print(buy_result_message)
+                send_telegram_message(
+                    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, buy_result_message
+                )
+                if buy_result and "error" not in buy_result:  # 주문 성공 확인
+                    order_id = buy_result["uuid"]  # 주문 ID 저장
+                    invested[ticker] = {
+                        "price": current_price,
+                        "volume": investment_limit / current_price,
+                        "stop_loss": current_price * dynamic_stop_loss_ratio,
+                        "take_profit": current_price * dynamic_take_profit_ratio,
+                    }
+                    num_investments += 1
+                    message = f"{ticker}에 투자했습니다: {buy_result}"
+                    print(message)
+                    send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
+                else:
+                    message = f"{ticker} 매수 주문 실패: {buy_result}"
+                    print(message)
+                    send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
+
+        # 매도 조건 검사 및 매도 처리
+        for ticker in list(invested.keys()):
+            investment_info = invested[ticker]
+            current_price = get_current_price(ticker)
+
+            if current_price >= investment_info["take_profit"]:
+                sell_result = upbit.sell_market_order(ticker, investment_info["volume"])
+                if sell_result and "error" not in sell_result:  # 주문 성공 확인
+                    message = f"익절 매도 주문 결과: {sell_result}"
+                    del invested[ticker]
+                else:
+                    message = f"익절 매도 주문 실패: {sell_result}"
+                print(message)
+                send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
+            elif current_price <= investment_info["stop_loss"]:
+                sell_result = upbit.sell_market_order(ticker, investment_info["volume"])
+                if sell_result and "error" not in sell_result:  # 주문 성공 확인
+                    message = f"손절 매도 주문 결과: {sell_result}"
+                    del invested[ticker]
+                else:
+                    message = f"손절 매도 주문 실패: {sell_result}"
                 print(message)
                 send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
 
-            # 매도 조건 검사 및 매도 처리
-            if ticker in invested:
-                investment_info = invested[ticker]
-                if current_price >= investment_info["take_profit"]:
-                    sell_result = upbit.sell_market_order(
-                        ticker, investment_info["volume"]
-                    )
-                    message = f"익절 매도 주문 결과: {sell_result}"
-                    print(message)
-                    send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
-                    del invested[ticker]
-                elif current_price <= investment_info["stop_loss"]:
-                    sell_result = upbit.sell_market_order(
-                        ticker, investment_info["volume"]
-                    )
-                    message = f"손절 매도 주문 결과: {sell_result}"
-                    print(message)
-                    send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
-                    del invested[ticker]
-
     except Exception as e:
-        error_message = f"에러 발생: {e}"
+        error_message = f"예외 발생 - {e}"
         print(error_message)
         send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, error_message)
+        traceback_message = traceback.format_exc()
+        print(traceback_message)
+        send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, traceback_message)
         time.sleep(1)
